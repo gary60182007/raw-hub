@@ -7,7 +7,7 @@ This repository contains only the small bootstrap loader. The private runtime, v
 ## Loader
 
 ```lua
-loadstring(game:HttpGet("https://USERNAME.github.io/raw-hub/loader.lua"))()
+loadstring(game:HttpGet("https://gary60182007.github.io/raw-hub/loader.lua"))()
 ```
 
 The bootstrap forwards requests to the protected Raw Hub delivery service. Match records remain local and are never uploaded automatically.
