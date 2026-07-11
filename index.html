@@ -1,5 +1,171 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Raw Hub</title><style>body{margin:0;background:#0c0e17;color:#f0f4ff;font:16px system-ui;display:grid;place-items:center;min-height:100vh}.card{max-width:620px;padding:36px;border:1px solid #444c6f;border-radius:18px;background:#111420}h1{margin:0 0 8px;color:#7067ff}code{display:block;padding:16px;background:#161a2a;border-radius:10px;overflow:auto;color:#b9d8ff}</style></head>
-<body><main class="card"><h1>Raw Hub</h1><p>Official bootstrap page for the Roblox Last Letter script.</p><code>loadstring(game:HttpGet("https://YOUR_NAME.github.io/raw-hub/loader.lua"))()</code></main></body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080a13">
+  <title>Raw Hub · Last Letter</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080a13;
+      --panel: rgba(17, 20, 34, .86);
+      --line: rgba(137, 149, 255, .22);
+      --text: #f3f5ff;
+      --muted: #98a1bd;
+      --violet: #806cff;
+      --blue: #50a7ff;
+      --green: #47e5a1;
+    }
+    * { box-sizing: border-box }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      overflow-x: hidden;
+      color: var(--text);
+      font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(91, 67, 255, .22), transparent 34rem),
+        radial-gradient(circle at 90% 85%, rgba(45, 154, 255, .16), transparent 32rem),
+        var(--bg);
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+      background-size: 38px 38px;
+      mask-image: linear-gradient(to bottom, black, transparent 90%);
+    }
+    .card {
+      position: relative;
+      width: min(760px, 100%);
+      padding: clamp(26px, 5vw, 48px);
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: 0 28px 80px rgba(0,0,0,.46), inset 0 1px rgba(255,255,255,.035);
+      backdrop-filter: blur(18px);
+    }
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(38px, 8vw, 68px);
+      line-height: 1;
+      letter-spacing: -.055em;
+      background: linear-gradient(110deg, #fff 10%, #a99cff 45%, #64bbff 90%);
+      color: transparent;
+      background-clip: text;
+      -webkit-background-clip: text;
+    }
+    .subtitle {
+      max-width: 580px;
+      margin: 16px 0 28px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+    .loader {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(5, 7, 15, .75);
+    }
+    code {
+      min-width: 0;
+      flex: 1;
+      overflow-x: auto;
+      white-space: nowrap;
+      color: #c9d9ff;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      scrollbar-width: thin;
+    }
+    button {
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: white;
+      background: linear-gradient(135deg, var(--violet), var(--blue));
+      font: inherit;
+      font-weight: 750;
+      cursor: pointer;
+      transition: transform .15s ease, filter .15s ease;
+    }
+    button:hover { transform: translateY(-1px); filter: brightness(1.08) }
+    button:active { transform: translateY(0) }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 22px;
+    }
+    .feature {
+      padding: 13px 14px;
+      border: 1px solid rgba(137, 149, 255, .13);
+      border-radius: 13px;
+      color: #cbd1e7;
+      background: rgba(255,255,255,.025);
+      text-align: center;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .foot {
+      margin: 20px 0 0;
+      color: #747d99;
+      font-size: 12px;
+      text-align: center;
+    }
+    @media (max-width: 620px) {
+      .loader { align-items: stretch; flex-direction: column }
+      button { width: 100% }
+      .features { grid-template-columns: 1fr }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <p class="eyebrow">Official bootstrap</p>
+    <h1>RAW HUB</h1>
+    <p class="subtitle">A streamlined combat assistant for Roblox Last Letter with smart suggestions, automatic skill decisions and local match analysis.</p>
+    <div class="loader">
+      <code id="loader">loadstring(game:HttpGet("https://USERNAME.github.io/raw-hub/loader.lua"))()</code>
+      <button id="copy" type="button">Copy</button>
+    </div>
+    <div class="features" aria-label="Features">
+      <div class="feature">Smart Auto Type</div>
+      <div class="feature">Auto Use Skills</div>
+      <div class="feature">Local Match Record</div>
+    </div>
+    <p class="foot">This public repository contains only the bootstrap. Runtime data and private services stay off GitHub.</p>
+  </main>
+  <script>
+    const copy = document.querySelector("#copy");
+    copy.addEventListener("click", async () => {
+      const value = document.querySelector("#loader").textContent;
+      try {
+        await navigator.clipboard.writeText(value);
+        copy.textContent = "Copied";
+      } catch {
+        copy.textContent = "Select & copy";
+      }
+      setTimeout(() => copy.textContent = "Copy", 1600);
+    });
+  </script>
+</body>
 </html>
