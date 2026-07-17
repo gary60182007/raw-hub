@@ -22,3 +22,7 @@ The bootstrap forwards requests to the protected Raw Hub delivery service. Match
 - The Storage — GameId `4756005135`, PlaceId `13704594433`
 - TANMK Battles — GameId `2491559356`, PlaceId `6925857548`
 - Valley Prison — GameId `5456952508`, PlaceId `84335391000070`
+
+## Studio training lab
+
+The repository also includes a Studio-only NPC targeting and ballistic-visualization tool under [`studio/`](./studio/README.md). It runs only during Studio play tests and only tracks models tagged `TrainingTarget`.
