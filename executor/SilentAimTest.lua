@@ -10,6 +10,7 @@ end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
 local GuiService = game:GetService("GuiService")
@@ -23,6 +24,7 @@ local Config = {
     TeamCheck = true,
     VisibleCheck = true,
     HeadSync = true,
+    Mode = "PULSE",
     FOV = 180,
     MaxDistance = 3000,
     AimPart = "Head",
@@ -38,10 +40,17 @@ local Runtime = {
     Redirected = 0,
     Processed = 0,
     Confirmed = 0,
+    ConfirmedDamage = 0,
+    LastHit = "NONE",
+    LastShotAt = 0,
+    LastAngle = 0,
     OriginalNamecall = nil,
+    OriginalIndex = nil,
     OriginalAddProjectile = nil,
     ClientHB = nil,
     Gui = nil,
+    Pulse = nil,
+    PulseBound = false,
 }
 Env.RawHubSilentTest = Runtime
 
@@ -252,7 +261,7 @@ panel.BackgroundColor3 = Color3.fromRGB(10, 13, 23)
 panel.BackgroundTransparency = 0.04
 panel.BorderSizePixel = 0
 panel.Position = UDim2.new(0.5, 0, 0, 18)
-panel.Size = UDim2.fromOffset(470, 128)
+panel.Size = UDim2.fromOffset(560, 146)
 panel.ZIndex = 30
 panel.Parent = gui
 local panelCorner = Instance.new("UICorner")
@@ -279,7 +288,7 @@ local statusLabel = Instance.new("TextLabel")
 statusLabel.BackgroundTransparency = 1
 statusLabel.Font = Enum.Font.RobotoMono
 statusLabel.Position = UDim2.fromOffset(14, 31)
-statusLabel.Size = UDim2.new(1, -28, 0, 38)
+statusLabel.Size = UDim2.new(1, -28, 0, 52)
 statusLabel.Text = "INITIALIZING HOOKS..."
 statusLabel.TextColor3 = Color3.fromRGB(143, 153, 180)
 statusLabel.TextSize = 9
@@ -291,9 +300,9 @@ statusLabel.Parent = panel
 local keysLabel = Instance.new("TextLabel")
 keysLabel.BackgroundTransparency = 1
 keysLabel.Font = Enum.Font.GothamMedium
-keysLabel.Position = UDim2.fromOffset(14, 71)
+keysLabel.Position = UDim2.fromOffset(14, 86)
 keysLabel.Size = UDim2.new(1, -28, 0, 15)
-keysLabel.Text = "F3 toggle   F4 visibility   F5 head sync   [ / ] FOV   F8 unload"
+keysLabel.Text = "F3 toggle   F4 visibility   F5 head sync   F6 mode   [ / ] FOV   F8 unload"
 keysLabel.TextColor3 = Color3.fromRGB(99, 112, 145)
 keysLabel.TextSize = 8
 keysLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -302,7 +311,7 @@ keysLabel.Parent = panel
 
 local quickControls = Instance.new("Frame")
 quickControls.BackgroundTransparency = 1
-quickControls.Position = UDim2.fromOffset(12, 92)
+quickControls.Position = UDim2.fromOffset(12, 109)
 quickControls.Size = UDim2.new(1, -24, 0, 27)
 quickControls.ZIndex = 31
 quickControls.Parent = panel
@@ -334,14 +343,16 @@ end
 local toggleButton = quickButton("SILENT ON", 72, Color3.fromRGB(35, 112, 83))
 local losButton = quickButton("LOS ON", 61, Color3.fromRGB(35, 83, 112))
 local syncButton = quickButton("SYNC ON", 64, Color3.fromRGB(77, 57, 125))
-local fovMinusButton = quickButton("FOV −", 55)
-local fovPlusButton = quickButton("FOV +", 55)
-local unloadButton = quickButton("UNLOAD", 72, Color3.fromRGB(125, 42, 61))
+local modeButton = quickButton("MODE PULSE", 82, Color3.fromRGB(112, 70, 35))
+local fovMinusButton = quickButton("FOV −", 50)
+local fovPlusButton = quickButton("FOV +", 50)
+local unloadButton = quickButton("UNLOAD", 70, Color3.fromRGB(125, 42, 61))
 
 local Events = ReplicatedStorage:WaitForChild("ACS_Engine"):WaitForChild("Events")
 local ShootRemote = Events:WaitForChild("Shoot")
 local ProcessRemote = Events:WaitForChild("Process")
 local HeadRotRemote = Events:WaitForChild("HeadRot")
+local HitmarkerRemote = Events:WaitForChild("Hitmarker")
 local clientHBModule = LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("ClientHB")
 local ClientHB = safeRequire(clientHBModule)
 Runtime.ClientHB = ClientHB
@@ -354,12 +365,140 @@ local function sendHeadSync(target)
     local direction = target.AimPoint - root.Position
     if direction.Magnitude < 0.01 then return end
     local localDirection = root.CFrame:VectorToObjectSpace(direction.Unit)
-    local pitch = math.deg(math.asin(math.clamp(localDirection.Y, -1, 1)))
-    local yaw = math.deg(-math.asin(math.clamp(localDirection.X / 1.15, -1, 1)))
+    local upperTorso = character:FindFirstChild("UpperTorso")
+    local torsoPitch = upperTorso and -upperTorso.CFrame.LookVector.Y or 0
+    local neckDirection = CFrame.Angles(
+        torsoPitch,
+        -math.asin(math.clamp(localDirection.X / 1.15, -1, 1)),
+        0
+    ) * CFrame.Angles(math.asin(math.clamp(localDirection.Y, -1, 1)), 0, 0)
+    local pitch, yaw = neckDirection:ToOrientation()
     pcall(function()
-        HeadRotRemote:FireServer(math.round(pitch), math.round(yaw))
+        HeadRotRemote:FireServer(math.round(math.deg(pitch)), math.round(math.deg(yaw)))
     end)
 end
+
+local function hitModelName(model)
+    if typeof(model) ~= "Instance" then return "UNKNOWN" end
+    local player = Players:GetPlayerFromCharacter(model)
+    return player and player.Name or model.Name
+end
+
+track(HitmarkerRemote.OnClientEvent:Connect(function(payload)
+    if not Runtime.Running or not Config.Enabled or type(payload) ~= "table" then return end
+    if os.clock() - Runtime.LastShotAt > 4 then return end
+    local damage = tonumber(payload.Damage) or 0
+    if damage <= 0 and not payload.Kill then return end
+    Runtime.Confirmed = Runtime.Confirmed + 1
+    Runtime.ConfirmedDamage = Runtime.ConfirmedDamage + damage
+    Runtime.LastHit = string.format(
+        "%s %.1f%s%s",
+        hitModelName(payload.DamageModel),
+        damage,
+        payload.Headshot and " HS" or "",
+        payload.Kill and " KILL" or ""
+    )
+end))
+
+local function directionAngle(a, b)
+    if typeof(a) ~= "Vector3" or typeof(b) ~= "Vector3" or a.Magnitude < 0.001 or b.Magnitude < 0.001 then
+        return 180
+    end
+    return math.deg(math.acos(math.clamp(a.Unit:Dot(b.Unit), -1, 1)))
+end
+
+local function targetCameraCFrame(target, baseCFrame)
+    if not target or not target.AimPoint or typeof(baseCFrame) ~= "CFrame" then return nil end
+    local direction = target.AimPoint - baseCFrame.Position
+    if direction.Magnitude < 0.01 then return nil end
+    return CFrame.lookAt(baseCFrame.Position, target.AimPoint, baseCFrame.UpVector)
+end
+
+local function beginPulse(target)
+    Camera = workspace.CurrentCamera or Camera
+    if not Camera or not target then return end
+    local original = Camera.CFrame
+    local aimed = targetCameraCFrame(target, original)
+    if not aimed then return end
+    if not Runtime.Pulse then
+        Runtime.Pulse = {Restore = original, Until = os.clock() + 0.09, Target = target}
+    else
+        Runtime.Pulse.Until = os.clock() + 0.09
+        Runtime.Pulse.Target = target
+    end
+    Camera.CFrame = aimed
+    sendHeadSync(target)
+end
+
+local function isGunFrameworkCaller(caller)
+    if typeof(caller) ~= "Instance" or caller.Name ~= "GunFramework" then return false end
+    local character = LocalPlayer.Character
+    return character ~= nil and caller:IsDescendantOf(character)
+end
+
+local cameraSpoofReady = type(hookmetamethod) == "function"
+    and type(newcclosure) == "function"
+    and type(checkcaller) == "function"
+    and type(getcallingscript) == "function"
+
+if cameraSpoofReady then
+    local originalIndex
+    local okIndex, indexResult = pcall(function()
+        originalIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+            if Runtime.Running and Config.Enabled and Config.Mode == "SPOOF"
+                and not checkcaller() and self == Camera and key == "CFrame"
+            then
+                local caller = getcallingscript()
+                if isGunFrameworkCaller(caller) and CurrentTarget then
+                    local actual = originalIndex(self, key)
+                    local aimed = targetCameraCFrame(CurrentTarget, actual)
+                    if aimed then return aimed end
+                end
+            end
+            return originalIndex(self, key)
+        end))
+        return originalIndex
+    end)
+    if okIndex and indexResult then
+        Runtime.OriginalIndex = indexResult
+    else
+        cameraSpoofReady = false
+    end
+end
+
+pcall(function()
+    ContextActionService:BindActionAtPriority(
+        "RawHubSilentPulse",
+        function(_, inputState)
+            if inputState == Enum.UserInputState.Begin and Runtime.Running and Config.Enabled
+                and Config.Mode == "PULSE" and CurrentTarget
+            then
+                beginPulse(CurrentTarget)
+            end
+            return Enum.ContextActionResult.Pass
+        end,
+        false,
+        10000,
+        Enum.UserInputType.MouseButton1,
+        Enum.KeyCode.ButtonR2
+    )
+    Runtime.PulseBound = true
+end)
+
+RunService:BindToRenderStep("RawHubSilentPulseCamera", Enum.RenderPriority.Camera.Value + 2, function()
+    local pulse = Runtime.Pulse
+    if not Runtime.Running or not pulse then return end
+    Camera = workspace.CurrentCamera or Camera
+    if not Camera then return end
+    if Config.Mode == "PULSE" and Config.Enabled and os.clock() <= pulse.Until then
+        local aimed = targetCameraCFrame(pulse.Target, Camera.CFrame)
+        if aimed then Camera.CFrame = aimed end
+    else
+        local restore = pulse.Restore
+        Runtime.Pulse = nil
+        if typeof(restore) == "CFrame" then Camera.CFrame = restore end
+    end
+end)
 
 local hookReady = type(hookmetamethod) == "function"
     and type(getnamecallmethod) == "function"
@@ -411,6 +550,12 @@ if hookReady then
                                 local direction = target.AimPoint - payload.BP
                                 if direction.Magnitude > 0.01 then
                                     direction = direction.Unit
+                                    Runtime.LastAngle = directionAngle(payload.D, direction)
+                                    if Config.Mode == "PULSE" then
+                                        beginPulse(target)
+                                    elseif Config.HeadSync then
+                                        sendHeadSync(target)
+                                    end
                                     local modified = table.clone(payload)
                                     modified.D = direction
                                     args[1] = modified
@@ -421,12 +566,11 @@ if hookReady then
                                             Expires = os.clock() + 1.5,
                                         }
                                         Runtime.Pending[payload.ID] = {
-                                            Humanoid = target.Character:FindFirstChildOfClass("Humanoid"),
-                                            Health = target.Character:FindFirstChildOfClass("Humanoid") and target.Character:FindFirstChildOfClass("Humanoid").Health or 0,
                                             Expires = os.clock() + 3,
                                         }
                                     end
                                     Runtime.Redirected = Runtime.Redirected + 1
+                                    Runtime.LastShotAt = os.clock()
                                     CurrentTarget = target
                                 end
                             end
@@ -436,14 +580,7 @@ if hookReady then
                         local pending = shotId and Runtime.Pending[shotId]
                         if pending then
                             Runtime.Processed = Runtime.Processed + 1
-                            task.delay(0.65, function()
-                                if not Runtime.Running then return end
-                                local humanoid = pending.Humanoid
-                                if humanoid and humanoid.Parent and humanoid.Health < pending.Health then
-                                    Runtime.Confirmed = Runtime.Confirmed + 1
-                                end
-                                Runtime.Pending[shotId] = nil
-                            end)
+                            Runtime.Pending[shotId] = nil
                         end
                     end
                 end
@@ -472,6 +609,17 @@ function Runtime.Unload()
     if Runtime.OriginalNamecall and type(hookmetamethod) == "function" then
         pcall(function() hookmetamethod(game, "__namecall", Runtime.OriginalNamecall) end)
     end
+    if Runtime.OriginalIndex and type(hookmetamethod) == "function" then
+        pcall(function() hookmetamethod(game, "__index", Runtime.OriginalIndex) end)
+    end
+    pcall(function() RunService:UnbindFromRenderStep("RawHubSilentPulseCamera") end)
+    if Runtime.Pulse and Camera and typeof(Runtime.Pulse.Restore) == "CFrame" then
+        pcall(function() Camera.CFrame = Runtime.Pulse.Restore end)
+    end
+    Runtime.Pulse = nil
+    if Runtime.PulseBound then
+        pcall(function() ContextActionService:UnbindAction("RawHubSilentPulse") end)
+    end
     pcall(function() gui:Destroy() end)
     if Env.RawHubSilentTest == Runtime then Env.RawHubSilentTest = nil end
 end
@@ -483,6 +631,30 @@ local function refreshQuickControls()
     losButton.BackgroundColor3 = Config.VisibleCheck and Color3.fromRGB(35, 83, 112) or Color3.fromRGB(78, 62, 42)
     syncButton.Text = Config.HeadSync and "SYNC ON" or "SYNC OFF"
     syncButton.BackgroundColor3 = Config.HeadSync and Color3.fromRGB(77, 57, 125) or Color3.fromRGB(72, 54, 54)
+    modeButton.Text = "MODE " .. Config.Mode
+    if Config.Mode == "PULSE" then
+        modeButton.BackgroundColor3 = Color3.fromRGB(112, 70, 35)
+    elseif Config.Mode == "SPOOF" then
+        modeButton.BackgroundColor3 = Color3.fromRGB(45, 99, 125)
+    else
+        modeButton.BackgroundColor3 = Color3.fromRGB(72, 61, 92)
+    end
+end
+
+local function cycleMode()
+    if Config.Mode == "PULSE" then
+        Config.Mode = cameraSpoofReady and "SPOOF" or "REMOTE"
+    elseif Config.Mode == "SPOOF" then
+        Config.Mode = "REMOTE"
+    else
+        Config.Mode = "PULSE"
+    end
+    if Config.Mode ~= "PULSE" and Runtime.Pulse then
+        local restore = Runtime.Pulse.Restore
+        Runtime.Pulse = nil
+        if Camera and typeof(restore) == "CFrame" then pcall(function() Camera.CFrame = restore end) end
+    end
+    refreshQuickControls()
 end
 
 local function changeFOV(amount)
@@ -502,6 +674,7 @@ track(syncButton.Activated:Connect(function()
     Config.HeadSync = not Config.HeadSync
     refreshQuickControls()
 end))
+track(modeButton.Activated:Connect(cycleMode))
 track(fovMinusButton.Activated:Connect(function() changeFOV(-20) end))
 track(fovPlusButton.Activated:Connect(function() changeFOV(20) end))
 track(unloadButton.Activated:Connect(function() Runtime.Unload() end))
@@ -518,6 +691,8 @@ track(UserInputService.InputBegan:Connect(function(input, processed)
     elseif input.KeyCode == Enum.KeyCode.F5 then
         Config.HeadSync = not Config.HeadSync
         refreshQuickControls()
+    elseif input.KeyCode == Enum.KeyCode.F6 then
+        cycleMode()
     elseif input.KeyCode == Enum.KeyCode.RightBracket then
         changeFOV(20)
     elseif input.KeyCode == Enum.KeyCode.LeftBracket then
@@ -558,8 +733,9 @@ track(RunService.RenderStepped:Connect(function()
     else
         local targetText = CurrentTarget and (CurrentTarget.Player.Name .. string.format("  %dst", CurrentTarget.Distance)) or "NONE"
         statusLabel.Text = string.format(
-            "STATUS %s   TARGET %s   S/P/D %d/%d/%d\n%s  %.0f studs/s  SYNC %s  LOS %s  FOV %d",
+            "STATUS %s   MODE %s   TARGET %s   S/P/H %d/%d/%d\n%s  %.0f studs/s  SYNC %s  LOS %s  FOV %d  Δ%.1f°\nSERVER HIT %s   TOTAL %.1f",
             Config.Enabled and "ON" or "OFF",
+            Config.Mode,
             targetText,
             Runtime.Redirected,
             Runtime.Processed,
@@ -568,7 +744,10 @@ track(RunService.RenderStepped:Connect(function()
             speed,
             Config.HeadSync and "ON" or "OFF",
             Config.VisibleCheck and "ON" or "OFF",
-            Config.FOV
+            Config.FOV,
+            Runtime.LastAngle,
+            Runtime.LastHit,
+            Runtime.ConfirmedDamage
         )
         statusLabel.TextColor3 = Config.Enabled and Color3.fromRGB(73, 235, 165) or Color3.fromRGB(255, 205, 85)
     end
@@ -582,4 +761,4 @@ track(RunService.RenderStepped:Connect(function()
     end
 end))
 
-print("[Raw Hub Silent Test] Loaded | F3 toggle | F4 visibility | F5 head sync | [ / ] FOV | F8 unload")
+print("[Raw Hub Silent Test] Loaded | S/P/H uses authoritative server Hitmarker | F6 mode | F8 unload")
