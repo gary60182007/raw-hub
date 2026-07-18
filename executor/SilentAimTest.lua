@@ -22,6 +22,7 @@ local Config = {
     Enabled = true,
     TeamCheck = true,
     VisibleCheck = true,
+    HeadSync = true,
     FOV = 180,
     MaxDistance = 3000,
     AimPart = "Head",
@@ -33,7 +34,10 @@ local Runtime = {
     Running = true,
     Connections = {},
     Shots = {},
+    Pending = {},
     Redirected = 0,
+    Processed = 0,
+    Confirmed = 0,
     OriginalNamecall = nil,
     OriginalAddProjectile = nil,
     ClientHB = nil,
@@ -248,7 +252,7 @@ panel.BackgroundColor3 = Color3.fromRGB(10, 13, 23)
 panel.BackgroundTransparency = 0.04
 panel.BorderSizePixel = 0
 panel.Position = UDim2.new(0.5, 0, 0, 18)
-panel.Size = UDim2.fromOffset(390, 128)
+panel.Size = UDim2.fromOffset(470, 128)
 panel.ZIndex = 30
 panel.Parent = gui
 local panelCorner = Instance.new("UICorner")
@@ -289,7 +293,7 @@ keysLabel.BackgroundTransparency = 1
 keysLabel.Font = Enum.Font.GothamMedium
 keysLabel.Position = UDim2.fromOffset(14, 71)
 keysLabel.Size = UDim2.new(1, -28, 0, 15)
-keysLabel.Text = "F3 toggle   F4 visibility   [ / ] FOV   F8 unload"
+keysLabel.Text = "F3 toggle   F4 visibility   F5 head sync   [ / ] FOV   F8 unload"
 keysLabel.TextColor3 = Color3.fromRGB(99, 112, 145)
 keysLabel.TextSize = 8
 keysLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -329,15 +333,33 @@ end
 
 local toggleButton = quickButton("SILENT ON", 72, Color3.fromRGB(35, 112, 83))
 local losButton = quickButton("LOS ON", 61, Color3.fromRGB(35, 83, 112))
+local syncButton = quickButton("SYNC ON", 64, Color3.fromRGB(77, 57, 125))
 local fovMinusButton = quickButton("FOV −", 55)
 local fovPlusButton = quickButton("FOV +", 55)
 local unloadButton = quickButton("UNLOAD", 72, Color3.fromRGB(125, 42, 61))
 
 local Events = ReplicatedStorage:WaitForChild("ACS_Engine"):WaitForChild("Events")
 local ShootRemote = Events:WaitForChild("Shoot")
+local ProcessRemote = Events:WaitForChild("Process")
+local HeadRotRemote = Events:WaitForChild("HeadRot")
 local clientHBModule = LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("ClientHB")
 local ClientHB = safeRequire(clientHBModule)
 Runtime.ClientHB = ClientHB
+
+local function sendHeadSync(target)
+    if not Config.HeadSync or not target or not target.AimPoint then return end
+    local character = LocalPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local direction = target.AimPoint - root.Position
+    if direction.Magnitude < 0.01 then return end
+    local localDirection = root.CFrame:VectorToObjectSpace(direction.Unit)
+    local pitch = math.deg(math.asin(math.clamp(localDirection.Y, -1, 1)))
+    local yaw = math.deg(-math.asin(math.clamp(localDirection.X / 1.15, -1, 1)))
+    pcall(function()
+        HeadRotRemote:FireServer(math.round(pitch), math.round(yaw))
+    end)
+end
 
 local hookReady = type(hookmetamethod) == "function"
     and type(getnamecallmethod) == "function"
@@ -376,33 +398,52 @@ if hookReady then
             originalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                 local method = getnamecallmethod()
                 local args = table.pack(...)
-                if Runtime.Running and Config.Enabled and not checkcaller()
-                    and self == ShootRemote and method == "FireServer"
-                then
-                    local payload = args[1]
-                    if type(payload) == "table" and typeof(payload.BP) == "Vector3"
-                        and typeof(payload.D) == "Vector3" and not payload.Swing
-                    then
-                        local speed, gravity = getBallistics()
-                        speed = speed * (tonumber(payload.SP) or 1)
-                        local target = selectTarget(payload.BP, speed, gravity)
-                        if target then
-                            local direction = target.AimPoint - payload.BP
-                            if direction.Magnitude > 0.01 then
-                                direction = direction.Unit
-                                local modified = table.clone(payload)
-                                modified.D = direction
-                                args[1] = modified
-                                if payload.ID then
-                                    Runtime.Shots[payload.ID] = {
-                                        Direction = direction,
-                                        Speed = speed,
-                                        Expires = os.clock() + 1.5,
-                                    }
+                if Runtime.Running and Config.Enabled and not checkcaller() and method == "FireServer" then
+                    if self == ShootRemote then
+                        local payload = args[1]
+                        if type(payload) == "table" and typeof(payload.BP) == "Vector3"
+                            and typeof(payload.D) == "Vector3" and not payload.Swing
+                        then
+                            local speed, gravity = getBallistics()
+                            speed = speed * (tonumber(payload.SP) or 1)
+                            local target = selectTarget(payload.BP, speed, gravity)
+                            if target then
+                                local direction = target.AimPoint - payload.BP
+                                if direction.Magnitude > 0.01 then
+                                    direction = direction.Unit
+                                    local modified = table.clone(payload)
+                                    modified.D = direction
+                                    args[1] = modified
+                                    if payload.ID then
+                                        Runtime.Shots[payload.ID] = {
+                                            Direction = direction,
+                                            Speed = speed,
+                                            Expires = os.clock() + 1.5,
+                                        }
+                                        Runtime.Pending[payload.ID] = {
+                                            Humanoid = target.Character:FindFirstChildOfClass("Humanoid"),
+                                            Health = target.Character:FindFirstChildOfClass("Humanoid") and target.Character:FindFirstChildOfClass("Humanoid").Health or 0,
+                                            Expires = os.clock() + 3,
+                                        }
+                                    end
+                                    Runtime.Redirected = Runtime.Redirected + 1
+                                    CurrentTarget = target
                                 end
-                                Runtime.Redirected = Runtime.Redirected + 1
-                                CurrentTarget = target
                             end
+                        end
+                    elseif self == ProcessRemote then
+                        local shotId = args[3]
+                        local pending = shotId and Runtime.Pending[shotId]
+                        if pending then
+                            Runtime.Processed = Runtime.Processed + 1
+                            task.delay(0.65, function()
+                                if not Runtime.Running then return end
+                                local humanoid = pending.Humanoid
+                                if humanoid and humanoid.Parent and humanoid.Health < pending.Health then
+                                    Runtime.Confirmed = Runtime.Confirmed + 1
+                                end
+                                Runtime.Pending[shotId] = nil
+                            end)
                         end
                     end
                 end
@@ -440,6 +481,8 @@ local function refreshQuickControls()
     toggleButton.BackgroundColor3 = Config.Enabled and Color3.fromRGB(35, 112, 83) or Color3.fromRGB(92, 48, 58)
     losButton.Text = Config.VisibleCheck and "LOS ON" or "LOS OFF"
     losButton.BackgroundColor3 = Config.VisibleCheck and Color3.fromRGB(35, 83, 112) or Color3.fromRGB(78, 62, 42)
+    syncButton.Text = Config.HeadSync and "SYNC ON" or "SYNC OFF"
+    syncButton.BackgroundColor3 = Config.HeadSync and Color3.fromRGB(77, 57, 125) or Color3.fromRGB(72, 54, 54)
 end
 
 local function changeFOV(amount)
@@ -455,6 +498,10 @@ track(losButton.Activated:Connect(function()
     Config.VisibleCheck = not Config.VisibleCheck
     refreshQuickControls()
 end))
+track(syncButton.Activated:Connect(function()
+    Config.HeadSync = not Config.HeadSync
+    refreshQuickControls()
+end))
 track(fovMinusButton.Activated:Connect(function() changeFOV(-20) end))
 track(fovPlusButton.Activated:Connect(function() changeFOV(20) end))
 track(unloadButton.Activated:Connect(function() Runtime.Unload() end))
@@ -468,6 +515,9 @@ track(UserInputService.InputBegan:Connect(function(input, processed)
     elseif input.KeyCode == Enum.KeyCode.F4 then
         Config.VisibleCheck = not Config.VisibleCheck
         refreshQuickControls()
+    elseif input.KeyCode == Enum.KeyCode.F5 then
+        Config.HeadSync = not Config.HeadSync
+        refreshQuickControls()
     elseif input.KeyCode == Enum.KeyCode.RightBracket then
         changeFOV(20)
     elseif input.KeyCode == Enum.KeyCode.LeftBracket then
@@ -477,6 +527,7 @@ track(UserInputService.InputBegan:Connect(function(input, processed)
     end
 end))
 
+local lastHeadSync = 0
 track(RunService.RenderStepped:Connect(function()
     if not Runtime.Running then return end
     Camera = workspace.CurrentCamera or Camera
@@ -487,6 +538,10 @@ track(RunService.RenderStepped:Connect(function()
 
     local speed, gravity, weapon = getBallistics()
     CurrentTarget = selectTarget(Camera.CFrame.Position, speed, gravity)
+    if CurrentTarget and Config.Enabled and Config.HeadSync and os.clock() - lastHeadSync >= 0.1 then
+        lastHeadSync = os.clock()
+        sendHeadSync(CurrentTarget)
+    end
     if CurrentTarget then
         marker.Position = UDim2.fromOffset(CurrentTarget.Screen.X, CurrentTarget.Screen.Y)
         marker.Visible = Config.Enabled
@@ -503,13 +558,15 @@ track(RunService.RenderStepped:Connect(function()
     else
         local targetText = CurrentTarget and (CurrentTarget.Player.Name .. string.format("  %dst", CurrentTarget.Distance)) or "NONE"
         statusLabel.Text = string.format(
-            "STATUS %s   TARGET %s   REDIRECTED %d\n%s  %.0f studs/s  DROP %.2fx  LOS %s  FOV %d",
+            "STATUS %s   TARGET %s   S/P/D %d/%d/%d\n%s  %.0f studs/s  SYNC %s  LOS %s  FOV %d",
             Config.Enabled and "ON" or "OFF",
             targetText,
             Runtime.Redirected,
+            Runtime.Processed,
+            Runtime.Confirmed,
             string.upper(weapon),
             speed,
-            Config.DropScale,
+            Config.HeadSync and "ON" or "OFF",
             Config.VisibleCheck and "ON" or "OFF",
             Config.FOV
         )
@@ -520,6 +577,9 @@ track(RunService.RenderStepped:Connect(function()
     for id, shot in pairs(Runtime.Shots) do
         if now > shot.Expires then Runtime.Shots[id] = nil end
     end
+    for id, pending in pairs(Runtime.Pending) do
+        if now > pending.Expires then Runtime.Pending[id] = nil end
+    end
 end))
 
-print("[Raw Hub Silent Test] Loaded | F3 toggle | F4 visibility | [ / ] FOV | F8 unload")
+print("[Raw Hub Silent Test] Loaded | F3 toggle | F4 visibility | F5 head sync | [ / ] FOV | F8 unload")
