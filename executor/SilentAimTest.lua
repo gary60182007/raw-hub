@@ -248,7 +248,7 @@ panel.BackgroundColor3 = Color3.fromRGB(10, 13, 23)
 panel.BackgroundTransparency = 0.04
 panel.BorderSizePixel = 0
 panel.Position = UDim2.new(0.5, 0, 0, 18)
-panel.Size = UDim2.fromOffset(390, 94)
+panel.Size = UDim2.fromOffset(390, 128)
 panel.ZIndex = 30
 panel.Parent = gui
 local panelCorner = Instance.new("UICorner")
@@ -289,12 +289,49 @@ keysLabel.BackgroundTransparency = 1
 keysLabel.Font = Enum.Font.GothamMedium
 keysLabel.Position = UDim2.fromOffset(14, 71)
 keysLabel.Size = UDim2.new(1, -28, 0, 15)
-keysLabel.Text = "INSERT toggle   HOME visibility   PGUP/PGDN FOV   DELETE unload"
+keysLabel.Text = "F3 toggle   F4 visibility   [ / ] FOV   F8 unload"
 keysLabel.TextColor3 = Color3.fromRGB(99, 112, 145)
 keysLabel.TextSize = 8
 keysLabel.TextXAlignment = Enum.TextXAlignment.Left
 keysLabel.ZIndex = 31
 keysLabel.Parent = panel
+
+local quickControls = Instance.new("Frame")
+quickControls.BackgroundTransparency = 1
+quickControls.Position = UDim2.fromOffset(12, 92)
+quickControls.Size = UDim2.new(1, -24, 0, 27)
+quickControls.ZIndex = 31
+quickControls.Parent = panel
+local quickLayout = Instance.new("UIListLayout")
+quickLayout.FillDirection = Enum.FillDirection.Horizontal
+quickLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+quickLayout.Padding = UDim.new(0, 6)
+quickLayout.Parent = quickControls
+
+local function quickButton(text, width, color)
+    local button = Instance.new("TextButton")
+    button.AutoButtonColor = false
+    button.BackgroundColor3 = color or Color3.fromRGB(30, 36, 56)
+    button.BackgroundTransparency = 0.08
+    button.BorderSizePixel = 0
+    button.Font = Enum.Font.GothamBold
+    button.Size = UDim2.fromOffset(width, 27)
+    button.Text = text
+    button.TextColor3 = Color3.fromRGB(235, 240, 255)
+    button.TextSize = 8
+    button.ZIndex = 32
+    button.Parent = quickControls
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 7)
+    buttonCorner.Parent = button
+    return button
+end
+
+local toggleButton = quickButton("SILENT ON", 72, Color3.fromRGB(35, 112, 83))
+local losButton = quickButton("LOS ON", 61, Color3.fromRGB(35, 83, 112))
+local fovMinusButton = quickButton("FOV −", 55)
+local fovPlusButton = quickButton("FOV +", 55)
+local unloadButton = quickButton("UNLOAD", 72, Color3.fromRGB(125, 42, 61))
 
 local Events = ReplicatedStorage:WaitForChild("ACS_Engine"):WaitForChild("Events")
 local ShootRemote = Events:WaitForChild("Shoot")
@@ -398,19 +435,44 @@ function Runtime.Unload()
     if Env.RawHubSilentTest == Runtime then Env.RawHubSilentTest = nil end
 end
 
+local function refreshQuickControls()
+    toggleButton.Text = Config.Enabled and "SILENT ON" or "SILENT OFF"
+    toggleButton.BackgroundColor3 = Config.Enabled and Color3.fromRGB(35, 112, 83) or Color3.fromRGB(92, 48, 58)
+    losButton.Text = Config.VisibleCheck and "LOS ON" or "LOS OFF"
+    losButton.BackgroundColor3 = Config.VisibleCheck and Color3.fromRGB(35, 83, 112) or Color3.fromRGB(78, 62, 42)
+end
+
+local function changeFOV(amount)
+    Config.FOV = math.clamp(Config.FOV + amount, 40, 500)
+    circle.Size = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)
+end
+
+track(toggleButton.Activated:Connect(function()
+    Config.Enabled = not Config.Enabled
+    refreshQuickControls()
+end))
+track(losButton.Activated:Connect(function()
+    Config.VisibleCheck = not Config.VisibleCheck
+    refreshQuickControls()
+end))
+track(fovMinusButton.Activated:Connect(function() changeFOV(-20) end))
+track(fovPlusButton.Activated:Connect(function() changeFOV(20) end))
+track(unloadButton.Activated:Connect(function() Runtime.Unload() end))
+refreshQuickControls()
+
 track(UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
-    if input.KeyCode == Enum.KeyCode.Insert then
+    if input.KeyCode == Enum.KeyCode.F3 then
         Config.Enabled = not Config.Enabled
-    elseif input.KeyCode == Enum.KeyCode.Home then
+        refreshQuickControls()
+    elseif input.KeyCode == Enum.KeyCode.F4 then
         Config.VisibleCheck = not Config.VisibleCheck
-    elseif input.KeyCode == Enum.KeyCode.PageUp then
-        Config.FOV = math.min(Config.FOV + 20, 500)
-        circle.Size = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)
-    elseif input.KeyCode == Enum.KeyCode.PageDown then
-        Config.FOV = math.max(Config.FOV - 20, 40)
-        circle.Size = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)
-    elseif input.KeyCode == Enum.KeyCode.Delete then
+        refreshQuickControls()
+    elseif input.KeyCode == Enum.KeyCode.RightBracket then
+        changeFOV(20)
+    elseif input.KeyCode == Enum.KeyCode.LeftBracket then
+        changeFOV(-20)
+    elseif input.KeyCode == Enum.KeyCode.F8 then
         Runtime.Unload()
     end
 end))
@@ -460,4 +522,4 @@ track(RunService.RenderStepped:Connect(function()
     end
 end))
 
-print("[Raw Hub Silent Test] Loaded | INSERT toggle | HOME visibility | DELETE unload")
+print("[Raw Hub Silent Test] Loaded | F3 toggle | F4 visibility | [ / ] FOV | F8 unload")
