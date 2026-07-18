@@ -1,4 +1,4 @@
-# Raw Hub v2.0 — Mid Eastern Conflict Sim
+# Raw Hub v2.1 — Mid Eastern Conflict Sim
 
 Custom executor runtime for GameId `3550555214` / PlaceId `9531918774`.
 
@@ -30,12 +30,13 @@ Mounted weapons use `Mounted Gun Common.Modules.WeaponsConfig`, `projectileSpeed
 
 ## Detailed ESP
 
-- visibility-colored corner boxes;
+- clean full boxes with a soft fill and dual-layer glow;
 - display name, username, team-aware coloring, health and distance;
 - equipped weapon label;
 - vertical health bar;
 - R6/R15 skeleton;
-- bottom tracers and character highlights;
+- bottom tracers and true through-wall character Chams;
+- adjustable Chams fill opacity with a sharp visibility-colored outline;
 - predicted impact marker with drop, lead and flight-time telemetry;
 - off-screen directional arrows.
 

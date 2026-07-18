@@ -1,5 +1,5 @@
 --!nocheck
--- Raw Hub v2.0 | Mid Eastern Conflict Sim
+-- Raw Hub v2.1 | Mid Eastern Conflict Sim
 -- Custom executor runtime: detailed ESP, smooth aim and automatic ACS ballistic compensation.
 
 local Env = (getgenv and getgenv()) or _G
@@ -73,13 +73,15 @@ local Config = {
         Enabled = true,
         TeamCheck = true,
         Boxes = true,
+        BoxFill = true,
         Names = true,
         Health = true,
         Distance = true,
         Weapon = true,
-        Tracers = true,
-        Skeleton = true,
-        Highlights = true,
+        Tracers = false,
+        Skeleton = false,
+        Chams = true,
+        ChamsFillTransparency = 0.48,
         Prediction = true,
         Offscreen = true,
         MaxDistance = 3500,
@@ -389,7 +391,7 @@ local BrandSub = create("TextLabel", {
     Font = Enum.Font.GothamMedium,
     Position = UDim2.fromOffset(19, 45),
     Size = UDim2.fromOffset(128, 18),
-    Text = "COMBAT SYSTEM v2.0",
+    Text = "COMBAT SYSTEM v2.1",
     TextColor3 = Theme.Accent2,
     TextSize = 8,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1009,7 +1011,8 @@ local espCore = makeSection(ESPPage, "PLAYER ESP", "Detailed live information fo
 setESPEnabled = makeToggle(espCore, "Master ESP", "Enable all configured visual elements", Config.ESP.Enabled, function(value)
     Config.ESP.Enabled = value
 end)
-makeToggle(espCore, "Corner boxes", nil, Config.ESP.Boxes, function(value) Config.ESP.Boxes = value end)
+makeToggle(espCore, "Clean full boxes", nil, Config.ESP.Boxes, function(value) Config.ESP.Boxes = value end)
+makeToggle(espCore, "Soft box fill", nil, Config.ESP.BoxFill, function(value) Config.ESP.BoxFill = value end)
 makeToggle(espCore, "Names and team", nil, Config.ESP.Names, function(value) Config.ESP.Names = value end)
 makeToggle(espCore, "Health bars", nil, Config.ESP.Health, function(value) Config.ESP.Health = value end)
 makeToggle(espCore, "Distance", nil, Config.ESP.Distance, function(value) Config.ESP.Distance = value end)
@@ -1018,7 +1021,10 @@ makeToggle(espCore, "Equipped weapon", nil, Config.ESP.Weapon, function(value) C
 local espAdvanced = makeSection(ESPPage, "ADVANCED VISUALS", "Extra positional and ballistic information")
 makeToggle(espAdvanced, "Skeleton", nil, Config.ESP.Skeleton, function(value) Config.ESP.Skeleton = value end)
 makeToggle(espAdvanced, "Tracers", nil, Config.ESP.Tracers, function(value) Config.ESP.Tracers = value end)
-makeToggle(espAdvanced, "Character highlights", nil, Config.ESP.Highlights, function(value) Config.ESP.Highlights = value end)
+makeToggle(espAdvanced, "Chams through walls", "Filled character color with a sharp visible outline", Config.ESP.Chams, function(value) Config.ESP.Chams = value end)
+makeSlider(espAdvanced, "Chams fill opacity", 10, 90, 5, math.floor((1 - Config.ESP.ChamsFillTransparency) * 100 + 0.5), "%", function(value)
+    Config.ESP.ChamsFillTransparency = 1 - value / 100
+end)
 makeToggle(espAdvanced, "Prediction marker", nil, Config.ESP.Prediction, function(value) Config.ESP.Prediction = value end)
 makeToggle(espAdvanced, "Off-screen arrows", nil, Config.ESP.Offscreen, function(value) Config.ESP.Offscreen = value end)
 makeToggle(espAdvanced, "ESP team check", nil, Config.ESP.TeamCheck, function(value) Config.ESP.TeamCheck = value end)
@@ -1572,158 +1578,337 @@ local skeletonPairsR6 = {
     {"Torso", "Left Leg"}, {"Torso", "Right Leg"},
 }
 
+local function createChams(character)
+    if not character or not character.Parent then return nil end
+    local old = character:FindFirstChild("RawHubChams")
+    if old then old:Destroy() end
+    return create("Highlight", {
+        Name = "RawHubChams",
+        Adornee = character,
+        DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+        Enabled = false,
+        FillColor = Theme.Accent,
+        FillTransparency = Config.ESP.ChamsFillTransparency,
+        LineThickness = 0.075,
+        OutlineColor = Theme.Accent2,
+        OutlineTransparency = 0,
+        Parent = character,
+    })
+end
+
 local function createVisual(player)
-    local visual = {Lines = {}, Skeleton = {}}
-    visual.Name = create("TextLabel", {
-        AnchorPoint = Vector2.new(0.5, 1),
-        BackgroundColor3 = Theme.Background,
-        BackgroundTransparency = 0.24,
+    local visual = {Skeleton = {}}
+
+    visual.BoxGlow = create("Frame", {
+        AnchorPoint = Vector2.new(0, 0),
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 26,
+        Parent = Overlay,
+    })
+    corner(visual.BoxGlow, 5)
+    visual.BoxGlowStroke = stroke(visual.BoxGlow, Theme.Accent2, 0.72, 4)
+
+    visual.Box = create("Frame", {
+        AnchorPoint = Vector2.new(0, 0),
+        BackgroundColor3 = Theme.Accent2,
+        BackgroundTransparency = 0.94,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 27,
+        Parent = Overlay,
+    })
+    corner(visual.Box, 4)
+    visual.BoxStroke = stroke(visual.Box, Theme.Accent2, 0.02, 1.35)
+    visual.BoxGradient = gradient(visual.Box, Color3.fromRGB(255, 255, 255), Color3.fromRGB(125, 135, 165), 90)
+
+    visual.TopAccent = create("Frame", {
+        BackgroundColor3 = Theme.Accent2,
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(5, 4),
+        Size = UDim2.new(1, -10, 0, 2),
+        ZIndex = 29,
+        Parent = visual.Box,
+    })
+    corner(visual.TopAccent, 2)
+
+    visual.NamePlate = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 1),
+        BackgroundColor3 = Color3.fromRGB(8, 11, 19),
+        BackgroundTransparency = 0.08,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(150, 24),
+        Visible = false,
+        ZIndex = 34,
+        Parent = Overlay,
+    })
+    corner(visual.NamePlate, 7)
+    visual.NameStroke = stroke(visual.NamePlate, Theme.Border, 0.26, 1)
+
+    visual.TeamDot = create("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        BackgroundColor3 = Theme.Accent2,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 8, 0.5, 0),
+        Size = UDim2.fromOffset(7, 7),
+        ZIndex = 35,
+        Parent = visual.NamePlate,
+    })
+    corner(visual.TeamDot, 99)
+
+    visual.Name = create("TextLabel", {
+        BackgroundTransparency = 1,
         Font = Enum.Font.GothamBold,
-        Size = UDim2.fromOffset(190, 18),
+        Position = UDim2.fromOffset(20, 0),
+        Size = UDim2.new(1, -26, 1, 0),
         Text = "PLAYER",
         TextColor3 = Theme.Text,
         TextSize = 9,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 35,
+        Parent = visual.NamePlate,
+    })
+
+    visual.InfoPlate = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        BackgroundColor3 = Color3.fromRGB(8, 11, 19),
+        BackgroundTransparency = 0.12,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(170, 22),
         Visible = false,
-        ZIndex = 31,
+        ZIndex = 34,
         Parent = Overlay,
     })
-    corner(visual.Name, 5)
+    corner(visual.InfoPlate, 7)
+    visual.InfoStroke = stroke(visual.InfoPlate, Theme.Border, 0.4, 1)
+
     visual.Info = create("TextLabel", {
-        AnchorPoint = Vector2.new(0.5, 0),
-        BackgroundColor3 = Theme.Background,
-        BackgroundTransparency = 0.24,
-        BorderSizePixel = 0,
+        BackgroundTransparency = 1,
         Font = Enum.Font.RobotoMono,
-        Size = UDim2.fromOffset(210, 17),
-        Text = "-- HP • -- ST • --",
-        TextColor3 = Theme.Accent2,
+        Position = UDim2.fromOffset(7, 0),
+        Size = UDim2.new(1, -14, 1, 0),
+        Text = "-- ST  •  --",
+        TextColor3 = Theme.Muted,
         TextSize = 8,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 35,
+        Parent = visual.InfoPlate,
+    })
+
+    visual.BallisticPlate = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        BackgroundColor3 = Color3.fromRGB(37, 29, 12),
+        BackgroundTransparency = 0.12,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(184, 20),
         Visible = false,
-        ZIndex = 31,
+        ZIndex = 34,
         Parent = Overlay,
     })
-    corner(visual.Info, 5)
+    corner(visual.BallisticPlate, 7)
+    stroke(visual.BallisticPlate, Theme.Yellow, 0.45, 1)
+
     visual.Ballistic = create("TextLabel", {
-        AnchorPoint = Vector2.new(0.5, 0),
         BackgroundTransparency = 1,
-        BorderSizePixel = 0,
         Font = Enum.Font.RobotoMono,
-        Size = UDim2.fromOffset(220, 16),
-        Text = "DROP -- • LEAD --",
+        Size = UDim2.fromScale(1, 1),
+        Text = "DROP --  LEAD --  --ms",
         TextColor3 = Theme.Yellow,
         TextSize = 8,
-        Visible = false,
-        ZIndex = 31,
-        Parent = Overlay,
+        ZIndex = 35,
+        Parent = visual.BallisticPlate,
     })
+
     visual.HealthBack = create("Frame", {
         AnchorPoint = Vector2.new(1, 0),
-        BackgroundColor3 = Theme.Background,
-        BackgroundTransparency = 0.15,
+        BackgroundColor3 = Color3.fromRGB(4, 6, 11),
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
-        Size = UDim2.fromOffset(5, 100),
+        Size = UDim2.fromOffset(6, 100),
         Visible = false,
         ZIndex = 31,
         Parent = Overlay,
     })
     corner(visual.HealthBack, 3)
+    stroke(visual.HealthBack, Theme.Border, 0.45, 1)
+
     visual.HealthFill = create("Frame", {
         AnchorPoint = Vector2.new(0, 1),
         BackgroundColor3 = Theme.Green,
         BorderSizePixel = 0,
-        Position = UDim2.fromScale(0, 1),
-        Size = UDim2.fromScale(1, 1),
+        Position = UDim2.new(0, 1, 1, -1),
+        Size = UDim2.new(1, -2, 1, -2),
         ZIndex = 32,
         Parent = visual.HealthBack,
     })
-    corner(visual.HealthFill, 3)
+    corner(visual.HealthFill, 2)
+    gradient(visual.HealthFill, Color3.fromRGB(115, 255, 190), Theme.Green, 90)
+
+    visual.HealthNumber = create("TextLabel", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        BackgroundColor3 = Color3.fromRGB(8, 11, 19),
+        BackgroundTransparency = 0.08,
+        BorderSizePixel = 0,
+        Font = Enum.Font.RobotoMono,
+        Size = UDim2.fromOffset(29, 16),
+        Text = "100",
+        TextColor3 = Theme.Green,
+        TextSize = 8,
+        Visible = false,
+        ZIndex = 34,
+        Parent = Overlay,
+    })
+    corner(visual.HealthNumber, 5)
+
+    visual.TracerGlow = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Theme.Accent2,
+        BackgroundTransparency = 0.78,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 23,
+        Parent = Overlay,
+    })
     visual.Tracer = create("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Theme.Accent2,
         BackgroundTransparency = 0.2,
         BorderSizePixel = 0,
         Visible = false,
-        ZIndex = 25,
+        ZIndex = 24,
         Parent = Overlay,
     })
+
     visual.Prediction = create("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Theme.Yellow,
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Size = UDim2.fromOffset(9, 9),
+        Size = UDim2.fromOffset(18, 18),
         Visible = false,
-        ZIndex = 34,
+        ZIndex = 38,
         Parent = Overlay,
     })
     corner(visual.Prediction, 99)
-    stroke(visual.Prediction, Theme.Text, 0.05, 1)
+    visual.PredictionStroke = stroke(visual.Prediction, Theme.Yellow, 0.05, 1.5)
+    visual.PredictionH = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Theme.Yellow,
+        BorderSizePixel = 0,
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromOffset(24, 1),
+        ZIndex = 39,
+        Parent = visual.Prediction,
+    })
+    visual.PredictionV = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Theme.Yellow,
+        BorderSizePixel = 0,
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromOffset(1, 24),
+        ZIndex = 39,
+        Parent = visual.Prediction,
+    })
+    visual.PredictionDot = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Theme.Text,
+        BorderSizePixel = 0,
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromOffset(4, 4),
+        ZIndex = 40,
+        Parent = visual.Prediction,
+    })
+    corner(visual.PredictionDot, 99)
+
+    visual.ArrowContainer = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Color3.fromRGB(8, 11, 19),
+        BackgroundTransparency = 0.12,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(58, 34),
+        Visible = false,
+        ZIndex = 40,
+        Parent = Overlay,
+    })
+    corner(visual.ArrowContainer, 9)
+    visual.ArrowStroke = stroke(visual.ArrowContainer, Theme.Accent2, 0.28, 1)
     visual.Arrow = create("TextLabel", {
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundTransparency = 1,
         Font = Enum.Font.GothamBlack,
-        Size = UDim2.fromOffset(28, 28),
+        Position = UDim2.new(0, 16, 0.5, 0),
+        Size = UDim2.fromOffset(24, 24),
         Text = "▲",
         TextColor3 = Theme.Accent2,
-        TextSize = 22,
-        Visible = false,
-        ZIndex = 35,
-        Parent = Overlay,
+        TextSize = 18,
+        ZIndex = 41,
+        Parent = visual.ArrowContainer,
     })
-    visual.Highlight = create("Highlight", {
-        Name = "RawHubHighlight",
-        Adornee = nil,
-        DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
-        Enabled = false,
-        FillColor = Theme.Accent,
-        FillTransparency = 0.84,
-        OutlineColor = Theme.Accent2,
-        OutlineTransparency = 0.08,
-        Parent = Overlay,
+    visual.ArrowDistance = create("TextLabel", {
+        BackgroundTransparency = 1,
+        Font = Enum.Font.RobotoMono,
+        Position = UDim2.fromOffset(29, 0),
+        Size = UDim2.new(1, -34, 1, 0),
+        Text = "--",
+        TextColor3 = Theme.Text,
+        TextSize = 8,
+        ZIndex = 41,
+        Parent = visual.ArrowContainer,
     })
-    for _ = 1, 8 do
-        table.insert(visual.Lines, create("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundColor3 = Theme.Accent2,
-            BorderSizePixel = 0,
-            Visible = false,
-            ZIndex = 30,
-            Parent = Overlay,
-        }))
-    end
+
     for _ = 1, 14 do
         table.insert(visual.Skeleton, create("Frame", {
             AnchorPoint = Vector2.new(0.5, 0.5),
             BackgroundColor3 = Theme.Accent2,
-            BackgroundTransparency = 0.08,
+            BackgroundTransparency = 0.22,
             BorderSizePixel = 0,
             Visible = false,
             ZIndex = 28,
             Parent = Overlay,
         }))
     end
+
+    visual.Character = player.Character
+    visual.Chams = createChams(visual.Character)
     Runtime.Visuals[player] = visual
     return visual
 end
 
+local function ensureChams(visual, character)
+    if visual.Character ~= character or not visual.Chams or not visual.Chams.Parent then
+        safeDestroy(visual.Chams)
+        visual.Character = character
+        visual.Chams = createChams(character)
+    end
+    return visual.Chams
+end
+
 local function hideVisual(visual)
-    visual.Name.Visible = false
-    visual.Info.Visible = false
-    visual.Ballistic.Visible = false
+    visual.BoxGlow.Visible = false
+    visual.Box.Visible = false
+    visual.NamePlate.Visible = false
+    visual.InfoPlate.Visible = false
+    visual.BallisticPlate.Visible = false
     visual.HealthBack.Visible = false
+    visual.HealthNumber.Visible = false
+    visual.TracerGlow.Visible = false
     visual.Tracer.Visible = false
     visual.Prediction.Visible = false
-    visual.Arrow.Visible = false
-    visual.Highlight.Enabled = false
-    for _, line in ipairs(visual.Lines) do line.Visible = false end
+    visual.ArrowContainer.Visible = false
+    if visual.Chams and visual.Chams.Parent then
+        visual.Chams.Enabled = false
+    end
     for _, line in ipairs(visual.Skeleton) do line.Visible = false end
 end
 
 local function destroyVisual(player)
     local visual = Runtime.Visuals[player]
     if not visual then return end
-    for _, object in pairs(visual) do
-        if typeof(object) == "Instance" then
+    for key, object in pairs(visual) do
+        if key == "Character" then
+            -- Reference only; never destroy a player's character model.
+        elseif typeof(object) == "Instance" then
             safeDestroy(object)
         elseif type(object) == "table" then
             for _, child in ipairs(object) do safeDestroy(child) end
@@ -1735,38 +1920,15 @@ end
 
 local function screenBox(data)
     local humanoid, root, head = data.Humanoid, data.Root, data.Head
-    local topWorld = head.Position + Vector3.new(0, head.Size.Y * 0.5 + 0.35, 0)
-    local bottomWorld = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y * 0.5 + 0.25, 0)
+    local topWorld = head.Position + Vector3.new(0, head.Size.Y * 0.5 + 0.42, 0)
+    local bottomWorld = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y * 0.5 + 0.32, 0)
     local top, topOn = Camera:WorldToViewportPoint(topWorld)
     local bottom, bottomOn = Camera:WorldToViewportPoint(bottomWorld)
-    if top.Z <= 0 or bottom.Z <= 0 then
-        return nil
-    end
-    local height = math.max(math.abs(bottom.Y - top.Y), 12)
-    local width = math.max(height * 0.56, 8)
+    if top.Z <= 0 or bottom.Z <= 0 then return nil end
+    local height = math.max(math.abs(bottom.Y - top.Y), 14)
+    local width = math.max(height * 0.56, 9)
     local centerX = (top.X + bottom.X) * 0.5
     return {centerX - width * 0.5, math.min(top.Y, bottom.Y), width, height, topOn or bottomOn}
-end
-
-local function drawCornerBox(visual, x, y, width, height, color)
-    local segmentW = math.max(width * 0.26, 5)
-    local segmentH = math.max(height * 0.20, 5)
-    local points = {
-        {Vector2.new(x, y), Vector2.new(x + segmentW, y)},
-        {Vector2.new(x, y), Vector2.new(x, y + segmentH)},
-        {Vector2.new(x + width, y), Vector2.new(x + width - segmentW, y)},
-        {Vector2.new(x + width, y), Vector2.new(x + width, y + segmentH)},
-        {Vector2.new(x, y + height), Vector2.new(x + segmentW, y + height)},
-        {Vector2.new(x, y + height), Vector2.new(x, y + height - segmentH)},
-        {Vector2.new(x + width, y + height), Vector2.new(x + width - segmentW, y + height)},
-        {Vector2.new(x + width, y + height), Vector2.new(x + width, y + height - segmentH)},
-    }
-    for index, pair in ipairs(points) do
-        local line = visual.Lines[index]
-        line.BackgroundColor3 = color
-        line.Visible = Config.ESP.Boxes
-        setLine(line, pair[1], pair[2], 1.5)
-    end
 end
 
 local function drawSkeleton(visual, character, color)
@@ -1795,29 +1957,25 @@ local function drawSkeleton(visual, character, color)
     end
 end
 
-local function updateOffscreen(visual, worldPosition, color)
+local function updateOffscreen(visual, worldPosition, color, distance)
     if not Config.ESP.Offscreen then
-        visual.Arrow.Visible = false
+        visual.ArrowContainer.Visible = false
         return
     end
     local viewport = Camera.ViewportSize
     local center = viewport * 0.5
     local point = Camera:WorldToViewportPoint(worldPosition)
     local direction = Vector2.new(point.X, point.Y) - center
-    if point.Z < 0 then
-        direction = -direction
-    end
-    if direction.Magnitude < 1 then
-        direction = Vector2.new(0, -1)
-    else
-        direction = direction.Unit
-    end
-    local radius = math.min(viewport.X, viewport.Y) * 0.43
+    if point.Z < 0 then direction = -direction end
+    direction = direction.Magnitude < 1 and Vector2.new(0, -1) or direction.Unit
+    local radius = math.min(viewport.X, viewport.Y) * 0.42
     local position = center + direction * radius
-    visual.Arrow.Position = UDim2.fromOffset(position.X, position.Y)
+    visual.ArrowContainer.Position = UDim2.fromOffset(position.X, position.Y)
     visual.Arrow.Rotation = math.deg(math.atan2(direction.Y, direction.X)) + 90
     visual.Arrow.TextColor3 = color
-    visual.Arrow.Visible = true
+    visual.ArrowStroke.Color = color
+    visual.ArrowDistance.Text = string.format("%d", distance)
+    visual.ArrowContainer.Visible = true
 end
 
 local function updateVisual(player, visual)
@@ -1834,73 +1992,114 @@ local function updateVisual(player, visual)
         hideVisual(visual)
         return
     end
-    local box = screenBox(data)
-    local selected = selectedTarget and selectedTarget.Player == player
-    local color = selected and Theme.Yellow or (data.Visible and Theme.Accent2 or Theme.Hidden)
-    visual.Highlight.Adornee = data.Character
-    visual.Highlight.OutlineColor = color
-    visual.Highlight.FillColor = selected and Theme.Yellow or Theme.Accent
-    visual.Highlight.Enabled = Config.ESP.Highlights
 
+    local selected = selectedTarget and selectedTarget.Player == player
+    local color = selected and Theme.Yellow or (data.Visible and Theme.Green or Theme.Hidden)
+    local fillColor = selected and Theme.Yellow or (data.Visible and Theme.Accent2 or Theme.Red)
+    local chams = ensureChams(visual, data.Character)
+    if chams then
+        chams.Adornee = data.Character
+        chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        chams.OutlineColor = color
+        chams.OutlineTransparency = 0
+        chams.FillColor = fillColor
+        chams.FillTransparency = Config.ESP.ChamsFillTransparency
+        chams.Enabled = Config.ESP.Chams
+    end
+
+    local box = screenBox(data)
     if not box or not box[5] then
-        visual.Name.Visible = false
-        visual.Info.Visible = false
-        visual.Ballistic.Visible = false
+        visual.BoxGlow.Visible = false
+        visual.Box.Visible = false
+        visual.NamePlate.Visible = false
+        visual.InfoPlate.Visible = false
+        visual.BallisticPlate.Visible = false
         visual.HealthBack.Visible = false
+        visual.HealthNumber.Visible = false
+        visual.TracerGlow.Visible = false
         visual.Tracer.Visible = false
         visual.Prediction.Visible = false
-        for _, line in ipairs(visual.Lines) do line.Visible = false end
         for _, line in ipairs(visual.Skeleton) do line.Visible = false end
-        updateOffscreen(visual, data.Root.Position, color)
+        updateOffscreen(visual, data.Root.Position, color, data.Distance)
         return
     end
 
-    visual.Arrow.Visible = false
+    visual.ArrowContainer.Visible = false
     local x, y, width, height = box[1], box[2], box[3], box[4]
-    drawCornerBox(visual, x, y, width, height, color)
+    visual.BoxGlow.Position = UDim2.fromOffset(x, y)
+    visual.BoxGlow.Size = UDim2.fromOffset(width, height)
+    visual.BoxGlowStroke.Color = color
+    visual.BoxGlow.Visible = Config.ESP.Boxes
+
+    visual.Box.Position = UDim2.fromOffset(x, y)
+    visual.Box.Size = UDim2.fromOffset(width, height)
+    visual.Box.BackgroundColor3 = fillColor
+    visual.Box.BackgroundTransparency = Config.ESP.BoxFill and 0.935 or 1
+    visual.BoxStroke.Color = color
+    visual.TopAccent.BackgroundColor3 = color
+    visual.Box.Visible = Config.ESP.Boxes
+
     drawSkeleton(visual, data.Character, color)
 
     local displayName = player.DisplayName
     if displayName ~= player.Name then
         displayName = displayName .. "  @" .. player.Name
     end
+    local plateWidth = math.clamp(math.max(width + 18, #displayName * 5.4 + 34), 112, 225)
+    visual.NamePlate.Size = UDim2.fromOffset(plateWidth, 24)
+    visual.NamePlate.Position = UDim2.fromOffset(x + width * 0.5, y - 7)
+    visual.NameStroke.Color = color
+    visual.TeamDot.BackgroundColor3 = player.Team and player.TeamColor.Color or color
     visual.Name.Text = string.upper(displayName)
-    visual.Name.TextColor3 = color
-    visual.Name.Position = UDim2.fromOffset(x + width * 0.5, y - 5)
-    visual.Name.Visible = Config.ESP.Names
+    visual.Name.TextColor3 = Theme.Text
+    visual.NamePlate.Visible = Config.ESP.Names
 
     local pieces = {}
-    if Config.ESP.Health then table.insert(pieces, string.format("%d HP", data.Humanoid.Health)) end
     if Config.ESP.Distance then table.insert(pieces, string.format("%d ST", data.Distance)) end
-    if Config.ESP.Weapon then table.insert(pieces, getWeaponName(data.Character)) end
-    visual.Info.Text = table.concat(pieces, " • ")
-    visual.Info.TextColor3 = color
-    visual.Info.Position = UDim2.fromOffset(x + width * 0.5, y + height + 5)
-    visual.Info.Visible = #pieces > 0
+    if Config.ESP.Weapon then table.insert(pieces, string.upper(getWeaponName(data.Character))) end
+    local infoWidth = math.clamp(math.max(width + 20, 118), 118, 210)
+    visual.InfoPlate.Size = UDim2.fromOffset(infoWidth, 22)
+    visual.InfoPlate.Position = UDim2.fromOffset(x + width * 0.5, y + height + 6)
+    visual.InfoStroke.Color = color
+    visual.Info.Text = table.concat(pieces, "  •  ")
+    visual.Info.TextColor3 = Theme.Muted
+    visual.InfoPlate.Visible = #pieces > 0
 
     local aimPart = getPreferredPart(data.Character) or data.Head
     local predicted, flightTime, drop, lead = solveBallistic(Camera.CFrame.Position, aimPart.Position, data.Root.AssemblyLinearVelocity)
-    visual.Ballistic.Text = string.format("DROP %.1f • LEAD %.1f • %dms", drop, lead, flightTime * 1000)
-    visual.Ballistic.Position = UDim2.fromOffset(x + width * 0.5, y + height + 22)
-    visual.Ballistic.Visible = Config.ESP.Prediction and Config.Aim.Prediction
+    visual.Ballistic.Text = string.format("DROP %.1f   LEAD %.1f   %dms", drop, lead, flightTime * 1000)
+    visual.BallisticPlate.Position = UDim2.fromOffset(x + width * 0.5, y + height + 31)
+    visual.BallisticPlate.Visible = Config.ESP.Prediction and Config.Aim.Prediction and selected
 
     local healthRatio = math.clamp(data.Humanoid.Health / math.max(data.Humanoid.MaxHealth, 1), 0, 1)
-    visual.HealthBack.Position = UDim2.fromOffset(x - 6, y)
-    visual.HealthBack.Size = UDim2.fromOffset(4, height)
+    local healthColor = Theme.Red:Lerp(Theme.Green, healthRatio)
+    visual.HealthBack.Position = UDim2.fromOffset(x - 8, y)
+    visual.HealthBack.Size = UDim2.fromOffset(6, height)
     visual.HealthBack.Visible = Config.ESP.Health
-    visual.HealthFill.Size = UDim2.fromScale(1, healthRatio)
-    visual.HealthFill.BackgroundColor3 = Theme.Red:Lerp(Theme.Green, healthRatio)
+    visual.HealthFill.Size = UDim2.new(1, -2, healthRatio, 0)
+    visual.HealthFill.BackgroundColor3 = healthColor
+    visual.HealthNumber.Position = UDim2.fromOffset(x - 11, y + height * (1 - healthRatio))
+    visual.HealthNumber.Text = tostring(math.floor(data.Humanoid.Health + 0.5))
+    visual.HealthNumber.TextColor3 = healthColor
+    visual.HealthNumber.Visible = Config.ESP.Health and (selected or healthRatio < 0.99)
 
+    local tracerFrom = Vector2.new(Camera.ViewportSize.X * 0.5, Camera.ViewportSize.Y - 4)
+    local tracerTo = Vector2.new(x + width * 0.5, y + height)
+    visual.TracerGlow.BackgroundColor3 = color
+    visual.TracerGlow.Visible = Config.ESP.Tracers
     visual.Tracer.BackgroundColor3 = color
     visual.Tracer.Visible = Config.ESP.Tracers
     if Config.ESP.Tracers then
-        setLine(visual.Tracer, Vector2.new(Camera.ViewportSize.X * 0.5, Camera.ViewportSize.Y - 4), Vector2.new(x + width * 0.5, y + height), 1)
+        setLine(visual.TracerGlow, tracerFrom, tracerTo, 3)
+        setLine(visual.Tracer, tracerFrom, tracerTo, 1)
     end
 
     local predictionPoint, predictionOn = Camera:WorldToViewportPoint(predicted)
     visual.Prediction.Position = UDim2.fromOffset(predictionPoint.X, predictionPoint.Y)
-    visual.Prediction.BackgroundColor3 = color
-    visual.Prediction.Visible = Config.ESP.Prediction and Config.Aim.Prediction and predictionOn and predictionPoint.Z > 0
+    visual.PredictionStroke.Color = color
+    visual.PredictionH.BackgroundColor3 = color
+    visual.PredictionV.BackgroundColor3 = color
+    visual.Prediction.Visible = Config.ESP.Prediction and Config.Aim.Prediction and predictionOn and predictionPoint.Z > 0 and selected
 end
 
 local lastBallisticUpdate = 0
@@ -2051,5 +2250,5 @@ end)
 
 connect(RunService.RenderStepped, render)
 
-notify("RAW HUB v2.0", "ESP, smooth aim and automatic ACS ballistics loaded", Theme.Green)
-print("[Raw Hub v2.0] Loaded | RMB aim | F1 ESP | F2 aim | RightShift menu | END unload")
+notify("RAW HUB v2.1", "New glow ESP, through-wall chams and ballistics loaded", Theme.Green)
+print("[Raw Hub v2.1] Loaded | RMB aim | F1 ESP | F2 aim | RightShift menu | END unload")
