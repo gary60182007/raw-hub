@@ -14,7 +14,7 @@ The bootstrap forwards requests to the protected Raw Hub delivery service. Match
 
 ## Executor edition
 
-[`executor/RawHub.lua`](./executor/RawHub.lua) is the in-game executor version of the targeting HUD. It targets live player characters, supports team and line-of-sight checks, draws ESP/tracers/prediction, and provides hold-to-aim camera guidance.
+[`executor/RawHub.lua`](./executor/RawHub.lua) is the rebuilt Raw Hub v2.0 runtime for Mid Eastern Conflict Sim. It includes a custom multi-tab interface, detailed player ESP, automatic ACS weapon/attachment detection, iterative target lead and distance-based bullet-drop compensation.
 
 ```lua
 loadstring(game:HttpGet("https://gary60182007.github.io/raw-hub/loader.lua"))()
