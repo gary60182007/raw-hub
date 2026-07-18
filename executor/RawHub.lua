@@ -1,21 +1,42 @@
 --!strict
--- Raw Hub Training Lab
--- Install as a LocalScript in StarterPlayerScripts.
--- The tool is intentionally limited to Roblox Studio and tagged NPC models.
+-- Raw Hub external executor edition
+-- Paste this file into a supported Roblox Luau executor and run it in-game.
 
+local Root = (getgenv and getgenv()) or _G
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local CollectionService = game:GetService("CollectionService")
+local CoreGui = game:GetService("CoreGui")
 
-if not RunService:IsStudio() then
-	warn("[Raw Training Lab] This developer overlay runs in Roblox Studio only.")
-	return
+if Root.RawHubExternal and type(Root.RawHubExternal.Unload) == "function" then
+	pcall(Root.RawHubExternal.Unload)
 end
 
-local localPlayer = Players.LocalPlayer
+local runtime = {
+	connections = {},
+	running = true,
+}
+Root.RawHubExternal = runtime
+
+local function connect(signal: RBXScriptSignal, callback: (...any) -> ())
+	local connection = signal:Connect(callback)
+	table.insert(runtime.connections, connection)
+	return connection
+end
+
+local localPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 local camera = workspace.CurrentCamera
+
+local uiParent: Instance = playerGui
+if type(gethui) == "function" then
+	local ok, result = pcall(gethui)
+	if ok and typeof(result) == "Instance" then
+		uiParent = result
+	end
+else
+	uiParent = CoreGui
+end
 
 local THEME = {
 	Background = Color3.fromRGB(8, 11, 20),
@@ -32,7 +53,7 @@ local THEME = {
 }
 
 local config = {
-	TargetTag = "TrainingTarget",
+	TeamCheck = true,
 	OverlayEnabled = true,
 	AimAssistEnabled = true,
 	ShowHighlights = true,
@@ -97,19 +118,23 @@ local function addStroke(parent: Instance, color: Color3, transparency: number?,
 	})
 end
 
-local oldGui = playerGui:FindFirstChild("RawTrainingLab")
+local oldGui = uiParent:FindFirstChild("RawHubExternal") or playerGui:FindFirstChild("RawHubExternal")
 if oldGui then
 	oldGui:Destroy()
 end
 
 local screenGui = make("ScreenGui", {
-	Name = "RawTrainingLab",
+	Name = "RawHubExternal",
 	ResetOnSpawn = false,
 	IgnoreGuiInset = true,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	DisplayOrder = 50,
-	Parent = playerGui,
+	Parent = uiParent,
 }) :: ScreenGui
+
+if syn and type(syn.protect_gui) == "function" then
+	pcall(syn.protect_gui, screenGui)
+end
 
 local dimmer = make("Frame", {
 	Name = "Dimmer",
@@ -168,7 +193,7 @@ local panel = make("Frame", {
 	BackgroundTransparency = 0.06,
 	BorderSizePixel = 0,
 	Position = UDim2.new(1, -24, 0.5, 0),
-	Size = UDim2.fromOffset(330, 608),
+	Size = UDim2.fromOffset(330, 654),
 	ZIndex = 20,
 	Parent = screenGui,
 }) :: Frame
@@ -225,7 +250,7 @@ make("TextLabel", {
 	Font = Enum.Font.GothamBlack,
 	Position = UDim2.fromOffset(0, 0),
 	Size = UDim2.new(1, 0, 0, 29),
-	Text = "RAW // TRAINING LAB",
+	Text = "RAW // EXTERNAL",
 	TextColor3 = THEME.Text,
 	TextSize = 19,
 	TextXAlignment = Enum.TextXAlignment.Left,
@@ -238,7 +263,7 @@ make("TextLabel", {
 	Font = Enum.Font.GothamMedium,
 	Position = UDim2.fromOffset(0, 29),
 	Size = UDim2.new(1, 0, 0, 22),
-	Text = "STUDIO • TAGGED NPC TARGETS",
+	Text = "EXECUTOR • LIVE PLAYER TARGETS",
 	TextColor3 = THEME.Green,
 	TextSize = 10,
 	TextXAlignment = Enum.TextXAlignment.Left,
@@ -466,6 +491,9 @@ end)
 local setAimAssist = createToggle("Aim guidance (hold RMB)", config.AimAssistEnabled, function(value)
 	config.AimAssistEnabled = value
 end)
+createToggle("Team check", config.TeamCheck, function(value)
+	config.TeamCheck = value
+end)
 createToggle("Line-of-sight filter", config.RequireLineOfSight, function(value)
 	config.RequireLineOfSight = value
 end)
@@ -591,7 +619,7 @@ local function createVisual(model: Model): Visual
 	addStroke(prediction, THEME.Text, 0.1, 1)
 
 	local highlight = make("Highlight", {
-		Name = "TrainingTargetHighlight",
+		Name = "RawHubTargetHighlight",
 		Adornee = model,
 		DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
 		FillColor = THEME.Accent,
@@ -599,7 +627,7 @@ local function createVisual(model: Model): Visual
 		OutlineColor = THEME.Cyan,
 		OutlineTransparency = 0.12,
 		Enabled = false,
-		Parent = model,
+		Parent = screenGui,
 	}) :: Highlight
 
 	local visual: Visual = {
@@ -629,20 +657,28 @@ local function destroyVisual(model: Model)
 	visuals[model] = nil
 end
 
-local function getNpcParts(model: Model): (Humanoid?, BasePart?, BasePart?)
-	if Players:GetPlayerFromCharacter(model) then
-		return nil, nil, nil
+local function getTargetParts(player: Player): (Model?, Humanoid?, BasePart?, BasePart?)
+	if player == localPlayer then
+		return nil, nil, nil, nil
+	end
+	if config.TeamCheck and localPlayer.Team ~= nil and player.Team == localPlayer.Team then
+		return nil, nil, nil, nil
+	end
+
+	local model = player.Character
+	if not model or not model:IsDescendantOf(workspace) then
+		return nil, nil, nil, nil
 	end
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	local root = model:FindFirstChild("HumanoidRootPart")
 	local head = model:FindFirstChild("Head")
 	if not humanoid or not root or not root:IsA("BasePart") or not head or not head:IsA("BasePart") then
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	end
 	if humanoid.Health <= 0 then
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	end
-	return humanoid, root, head
+	return model, humanoid, root, head
 end
 
 local function solveBallistics(origin: Vector3, targetPosition: Vector3, targetVelocity: Vector3): (Vector3, number, number)
@@ -716,30 +752,28 @@ local function collectTargets(): { TargetInfo }
 	local origin = camera.CFrame.Position
 	local viewportCenter = camera.ViewportSize * 0.5
 
-	for _, tagged in ipairs(CollectionService:GetTagged(config.TargetTag)) do
-		if tagged:IsA("Model") and tagged:IsDescendantOf(workspace) then
-			local humanoid, root, head = getNpcParts(tagged)
-			if humanoid and root and head then
-				local distance = (head.Position - origin).Magnitude
-				if distance <= config.MaxDistance then
-					local aimPoint, timeOfFlight, holdover = solveBallistics(origin, head.Position, root.AssemblyLinearVelocity)
-					local viewportPoint, onScreen = camera:WorldToViewportPoint(aimPoint)
-					local screenDistance = if onScreen
-						then (Vector2.new(viewportPoint.X, viewportPoint.Y) - viewportCenter).Magnitude
-						else math.huge
-					table.insert(results, {
-						model = tagged,
-						humanoid = humanoid,
-						root = root,
-						head = head,
-						distance = distance,
-						aimPoint = aimPoint,
-						timeOfFlight = timeOfFlight,
-						holdover = holdover,
-						screenDistance = screenDistance,
-						visible = hasLineOfSight(tagged, aimPoint),
-					})
-				end
+	for _, player in ipairs(Players:GetPlayers()) do
+		local model, humanoid, root, head = getTargetParts(player)
+		if model and humanoid and root and head then
+			local distance = (head.Position - origin).Magnitude
+			if distance <= config.MaxDistance then
+				local aimPoint, timeOfFlight, holdover = solveBallistics(origin, head.Position, root.AssemblyLinearVelocity)
+				local viewportPoint, onScreen = camera:WorldToViewportPoint(aimPoint)
+				local screenDistance = if onScreen
+					then (Vector2.new(viewportPoint.X, viewportPoint.Y) - viewportCenter).Magnitude
+					else math.huge
+				table.insert(results, {
+					model = model,
+					humanoid = humanoid,
+					root = root,
+					head = head,
+					distance = distance,
+					aimPoint = aimPoint,
+					timeOfFlight = timeOfFlight,
+					holdover = holdover,
+					screenDistance = screenDistance,
+					visible = hasLineOfSight(model, aimPoint),
+				})
 			end
 		end
 	end
@@ -845,7 +879,7 @@ local function updateStatus(target: TargetInfo?)
 	fovStroke.Color = if target.visible then THEME.Green else THEME.Red
 end
 
-UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+connect(UserInputService.InputBegan, function(input: InputObject, processed: boolean)
 	if processed then
 		return
 	end
@@ -860,20 +894,20 @@ UserInputService.InputBegan:Connect(function(input: InputObject, processed: bool
 	end
 end)
 
-UserInputService.InputEnded:Connect(function(input: InputObject)
+connect(UserInputService.InputEnded, function(input: InputObject)
 	if input.UserInputType == Enum.UserInputType.MouseButton2 then
 		aimHeld = false
 	end
 end)
 
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+connect(workspace:GetPropertyChangedSignal("CurrentCamera"), function()
 	camera = workspace.CurrentCamera
 end)
 
 local accumulated = 0
 local cachedTargets: { TargetInfo } = {}
 
-RunService.RenderStepped:Connect(function(deltaTime: number)
+connect(RunService.RenderStepped, function(deltaTime: number)
 	if not camera then
 		return
 	end
@@ -909,10 +943,31 @@ RunService.RenderStepped:Connect(function(deltaTime: number)
 	end
 end)
 
-CollectionService:GetInstanceRemovedSignal(config.TargetTag):Connect(function(instance: Instance)
-	if instance:IsA("Model") then
-		destroyVisual(instance)
+connect(Players.PlayerRemoving, function(player: Player)
+	if player.Character then
+		destroyVisual(player.Character)
 	end
 end)
 
-print("[Raw Training Lab] Ready. Tag NPC models with CollectionService tag 'TrainingTarget'.")
+function runtime.Unload()
+	if not runtime.running then
+		return
+	end
+	runtime.running = false
+	for _, connection in ipairs(runtime.connections) do
+		pcall(function()
+			connection:Disconnect()
+		end)
+	end
+	for model in pairs(visuals) do
+		destroyVisual(model)
+	end
+	if screenGui and screenGui.Parent then
+		screenGui:Destroy()
+	end
+	if Root.RawHubExternal == runtime then
+		Root.RawHubExternal = nil
+	end
+end
+
+print("[Raw Hub External] Loaded. F1: ESP, F2: aim, RMB: hold aim, RightShift: panel.")
