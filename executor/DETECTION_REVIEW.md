@@ -20,4 +20,4 @@ Server-only validation code was not included in the passive client export, so re
 
 ## Raw Hub implementation boundary
 
-Raw Hub v2.1 does not change WalkSpeed, Humanoid physics, BodyMovers, ammo, recoil, fire rate, hit results or weapon remotes. It reads replicated weapon configuration for ballistic values, renders local visual objects and character Chams, and applies aim guidance through the local camera or mouse movement path.
+Raw Hub v2.2 does not change WalkSpeed, Humanoid physics, BodyMovers, ammo, recoil, fire rate, hit results or weapon remotes. It reads replicated weapon configuration for ballistic values, renders local visual objects and character Chams, and applies aim guidance through the local camera or mouse movement path.

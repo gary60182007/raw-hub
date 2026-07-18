@@ -1,5 +1,5 @@
 --!nocheck
--- Raw Hub v2.1 | Mid Eastern Conflict Sim
+-- Raw Hub v2.2 | Mid Eastern Conflict Sim
 -- Custom executor runtime: detailed ESP, smooth aim and automatic ACS ballistic compensation.
 
 local Env = (getgenv and getgenv()) or _G
@@ -74,10 +74,10 @@ local Config = {
         TeamCheck = true,
         Boxes = true,
         BoxFill = true,
-        Names = true,
+        Names = false,
         Health = true,
-        Distance = true,
-        Weapon = true,
+        Distance = false,
+        Weapon = false,
         Tracers = false,
         Skeleton = false,
         Chams = true,
@@ -391,7 +391,7 @@ local BrandSub = create("TextLabel", {
     Font = Enum.Font.GothamMedium,
     Position = UDim2.fromOffset(19, 45),
     Size = UDim2.fromOffset(128, 18),
-    Text = "COMBAT SYSTEM v2.1",
+    Text = "COMBAT SYSTEM v2.2",
     TextColor3 = Theme.Accent2,
     TextSize = 8,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1635,23 +1635,20 @@ local function createVisual(player)
 
     visual.NamePlate = create("Frame", {
         AnchorPoint = Vector2.new(0.5, 1),
-        BackgroundColor3 = Color3.fromRGB(8, 11, 19),
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Size = UDim2.fromOffset(150, 24),
+        Size = UDim2.fromOffset(150, 16),
         Visible = false,
         ZIndex = 34,
         Parent = Overlay,
     })
-    corner(visual.NamePlate, 7)
-    visual.NameStroke = stroke(visual.NamePlate, Theme.Border, 0.26, 1)
 
     visual.TeamDot = create("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
         BackgroundColor3 = Theme.Accent2,
         BorderSizePixel = 0,
-        Position = UDim2.new(0, 8, 0.5, 0),
-        Size = UDim2.fromOffset(7, 7),
+        Position = UDim2.new(0, 3, 0.5, 0),
+        Size = UDim2.fromOffset(5, 5),
         ZIndex = 35,
         Parent = visual.NamePlate,
     })
@@ -1659,12 +1656,14 @@ local function createVisual(player)
 
     visual.Name = create("TextLabel", {
         BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold,
-        Position = UDim2.fromOffset(20, 0),
-        Size = UDim2.new(1, -26, 1, 0),
+        Font = Enum.Font.GothamMedium,
+        Position = UDim2.fromOffset(12, 0),
+        Size = UDim2.new(1, -14, 1, 0),
         Text = "PLAYER",
         TextColor3 = Theme.Text,
-        TextSize = 9,
+        TextSize = 10,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        TextStrokeTransparency = 0.2,
         TextTruncate = Enum.TextTruncate.AtEnd,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 35,
@@ -1673,25 +1672,23 @@ local function createVisual(player)
 
     visual.InfoPlate = create("Frame", {
         AnchorPoint = Vector2.new(0.5, 0),
-        BackgroundColor3 = Color3.fromRGB(8, 11, 19),
-        BackgroundTransparency = 0.12,
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Size = UDim2.fromOffset(170, 22),
+        Size = UDim2.fromOffset(170, 15),
         Visible = false,
         ZIndex = 34,
         Parent = Overlay,
     })
-    corner(visual.InfoPlate, 7)
-    visual.InfoStroke = stroke(visual.InfoPlate, Theme.Border, 0.4, 1)
 
     visual.Info = create("TextLabel", {
         BackgroundTransparency = 1,
         Font = Enum.Font.RobotoMono,
-        Position = UDim2.fromOffset(7, 0),
-        Size = UDim2.new(1, -14, 1, 0),
-        Text = "-- ST  •  --",
-        TextColor3 = Theme.Muted,
-        TextSize = 8,
+        Size = UDim2.fromScale(1, 1),
+        Text = "-- ST  ·  --",
+        TextColor3 = Theme.Text,
+        TextSize = 9,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        TextStrokeTransparency = 0.22,
         TextTruncate = Enum.TextTruncate.AtEnd,
         ZIndex = 35,
         Parent = visual.InfoPlate,
@@ -1823,36 +1820,37 @@ local function createVisual(player)
 
     visual.ArrowContainer = create("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Color3.fromRGB(8, 11, 19),
-        BackgroundTransparency = 0.12,
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Size = UDim2.fromOffset(58, 34),
+        Size = UDim2.fromOffset(38, 38),
         Visible = false,
         ZIndex = 40,
         Parent = Overlay,
     })
-    corner(visual.ArrowContainer, 9)
-    visual.ArrowStroke = stroke(visual.ArrowContainer, Theme.Accent2, 0.28, 1)
     visual.Arrow = create("TextLabel", {
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundTransparency = 1,
         Font = Enum.Font.GothamBlack,
-        Position = UDim2.new(0, 16, 0.5, 0),
+        Position = UDim2.new(0.5, 0, 0.42, 0),
         Size = UDim2.fromOffset(24, 24),
         Text = "▲",
         TextColor3 = Theme.Accent2,
         TextSize = 18,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        TextStrokeTransparency = 0.3,
         ZIndex = 41,
         Parent = visual.ArrowContainer,
     })
     visual.ArrowDistance = create("TextLabel", {
         BackgroundTransparency = 1,
         Font = Enum.Font.RobotoMono,
-        Position = UDim2.fromOffset(29, 0),
-        Size = UDim2.new(1, -34, 1, 0),
+        Position = UDim2.new(0, 0, 1, -10),
+        Size = UDim2.new(1, 0, 0, 10),
         Text = "--",
         TextColor3 = Theme.Text,
         TextSize = 8,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        TextStrokeTransparency = 0.25,
         ZIndex = 41,
         Parent = visual.ArrowContainer,
     })
@@ -1973,8 +1971,8 @@ local function updateOffscreen(visual, worldPosition, color, distance)
     visual.ArrowContainer.Position = UDim2.fromOffset(position.X, position.Y)
     visual.Arrow.Rotation = math.deg(math.atan2(direction.Y, direction.X)) + 90
     visual.Arrow.TextColor3 = color
-    visual.ArrowStroke.Color = color
     visual.ArrowDistance.Text = string.format("%d", distance)
+    visual.ArrowDistance.Visible = Config.ESP.Distance
     visual.ArrowContainer.Visible = true
 end
 
@@ -2045,24 +2043,23 @@ local function updateVisual(player, visual)
     if displayName ~= player.Name then
         displayName = displayName .. "  @" .. player.Name
     end
-    local plateWidth = math.clamp(math.max(width + 18, #displayName * 5.4 + 34), 112, 225)
-    visual.NamePlate.Size = UDim2.fromOffset(plateWidth, 24)
-    visual.NamePlate.Position = UDim2.fromOffset(x + width * 0.5, y - 7)
-    visual.NameStroke.Color = color
+    local plateWidth = math.clamp(math.max(width + 10, #displayName * 5.3 + 20), 72, 220)
+    visual.NamePlate.Size = UDim2.fromOffset(plateWidth, 16)
+    visual.NamePlate.Position = UDim2.fromOffset(x + width * 0.5, y - 3)
     visual.TeamDot.BackgroundColor3 = player.Team and player.TeamColor.Color or color
     visual.Name.Text = string.upper(displayName)
-    visual.Name.TextColor3 = Theme.Text
+    visual.Name.TextColor3 = color
     visual.NamePlate.Visible = Config.ESP.Names
 
     local pieces = {}
     if Config.ESP.Distance then table.insert(pieces, string.format("%d ST", data.Distance)) end
     if Config.ESP.Weapon then table.insert(pieces, string.upper(getWeaponName(data.Character))) end
-    local infoWidth = math.clamp(math.max(width + 20, 118), 118, 210)
-    visual.InfoPlate.Size = UDim2.fromOffset(infoWidth, 22)
-    visual.InfoPlate.Position = UDim2.fromOffset(x + width * 0.5, y + height + 6)
-    visual.InfoStroke.Color = color
-    visual.Info.Text = table.concat(pieces, "  •  ")
-    visual.Info.TextColor3 = Theme.Muted
+    local infoText = table.concat(pieces, "  ·  ")
+    local infoWidth = math.clamp(math.max(width + 8, #infoText * 5 + 10), 48, 210)
+    visual.InfoPlate.Size = UDim2.fromOffset(infoWidth, 15)
+    visual.InfoPlate.Position = UDim2.fromOffset(x + width * 0.5, y + height + 2)
+    visual.Info.Text = infoText
+    visual.Info.TextColor3 = color
     visual.InfoPlate.Visible = #pieces > 0
 
     local aimPart = getPreferredPart(data.Character) or data.Head
@@ -2250,5 +2247,5 @@ end)
 
 connect(RunService.RenderStepped, render)
 
-notify("RAW HUB v2.1", "New glow ESP, through-wall chams and ballistics loaded", Theme.Green)
-print("[Raw Hub v2.1] Loaded | RMB aim | F1 ESP | F2 aim | RightShift menu | END unload")
+notify("RAW HUB v2.2", "Minimal label ESP, clean chams and ballistics loaded", Theme.Green)
+print("[Raw Hub v2.2] Loaded | RMB aim | F1 ESP | F2 aim | RightShift menu | END unload")

@@ -14,7 +14,7 @@ The bootstrap forwards requests to the protected Raw Hub delivery service. Match
 
 ## Executor edition
 
-[`executor/RawHub.lua`](./executor/RawHub.lua) is the rebuilt Raw Hub v2.1 runtime for Mid Eastern Conflict Sim. It includes a custom multi-tab interface, clean glow ESP, real through-wall Chams, automatic ACS weapon/attachment detection, iterative target lead and distance-based bullet-drop compensation.
+[`executor/RawHub.lua`](./executor/RawHub.lua) is the rebuilt Raw Hub v2.2 runtime for Mid Eastern Conflict Sim. It includes a custom multi-tab interface, clean glow ESP, optional card-free labels, real through-wall Chams, automatic ACS weapon/attachment detection, iterative target lead and distance-based bullet-drop compensation.
 
 ```lua
 loadstring(game:HttpGet("https://gary60182007.github.io/raw-hub/loader.lua"))()
